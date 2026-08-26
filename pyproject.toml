@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hydrawise-report"
+version = "1.0.0"
+description = "Hydrawise irrigation client, run logger, and per-person water/energy billing"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["hydrawise", "hunter", "irrigation", "sprinkler", "billing"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Home Automation",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = []
+
+[project.scripts]
+hydrawise = "hydrawise.cli:main"
+
+[tool.setuptools]
+packages = ["hydrawise"]
+
+[tool.setuptools.package-data]
+hydrawise = ["py.typed"]

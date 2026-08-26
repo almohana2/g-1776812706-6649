@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# The local run log and the site config hold operational data, not source.
+*.db
+*.db-journal
+hydrawise.config.json
+!hydrawise.config.example.json

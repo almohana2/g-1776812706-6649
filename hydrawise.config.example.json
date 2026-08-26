@@ -1,0 +1,54 @@
+{
+  "api_key_env": "HYDRAWISE_API_KEY",
+  "controller_id": null,
+  "timezone": "Asia/Riyadh",
+  "currency": "SAR",
+  "water": {
+    "tariff_per_m3": 3.0,
+    "default_flow_rate_lpm": null
+  },
+  "electricity": {
+    "tariff_per_kwh": 0.18,
+    "default_pump_kw": 2.2
+  },
+  "people": [
+    {
+      "id": "ahmed",
+      "name": "Ahmed",
+      "email": "ahmed@example.com",
+      "language": "ar"
+    },
+    {
+      "id": "sara",
+      "name": "Sara",
+      "email": "sara@example.com",
+      "language": "en"
+    }
+  ],
+  "zones": [
+    {
+      "zone": 1,
+      "name": "Front lawn",
+      "flow_rate_lpm": 40.0,
+      "pump_kw": 2.2,
+      "owner": "ahmed"
+    },
+    {
+      "zone": 2,
+      "name": "Date palms",
+      "flow_rate_lpm": 60.0,
+      "pump_kw": 2.2,
+      "owner": "sara"
+    }
+  ],
+  "email": {
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 587,
+    "username": "you@example.com",
+    "password_env": "HYDRAWISE_SMTP_PASSWORD",
+    "from_address": "you@example.com",
+    "use_starttls": true,
+    "bcc": [],
+    "subject_template": "Irrigation report — {period} — {name}"
+  }
+}
