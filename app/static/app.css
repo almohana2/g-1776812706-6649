@@ -1,0 +1,209 @@
+/* =====================================================================
+   تقارير الري — نمط عربي RTL مستقل بالكامل (لا CDN ولا اتصال خارجي).
+   الألوان: أزرق مائي، أخضر، رمادي فاتح، وبرتقالي للتنبيهات — SRS §12.3.
+   ملاحظة: يُستخدم نفس الملف للشاشة وللطباعة/PDF حتى يتطابق الشكل.
+   ===================================================================== */
+
+:root {
+  --teal: #0f766e;
+  --teal-soft: #ccfbf1;
+  --teal-deep: #115e59;
+  --green: #15803d;
+  --green-soft: #dcfce7;
+  --orange: #c2410c;
+  --orange-soft: #ffedd5;
+  --red: #b91c1c;
+  --ink: #14212b;
+  --muted: #5b6b74;
+  --line: #dbe3e6;
+  --bg: #f4f7f7;
+  --card: #ffffff;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(20, 33, 43, .06), 0 4px 16px rgba(20, 33, 43, .05);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Thamania", "Noto Sans Arabic", "Noto Naskh Arabic",
+               "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  direction: rtl;
+}
+
+a { color: var(--teal); }
+h1, h2, h3 { line-height: 1.35; margin: 0 0 .5rem; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1rem; }
+
+.layout { max-width: 1100px; margin: 0 auto; padding: 0 16px 48px; }
+
+/* --- الشريط العلوي --------------------------------------------- */
+.topbar {
+  background: var(--teal);
+  color: #fff;
+  padding: 12px 0;
+  margin-bottom: 24px;
+}
+.topbar .layout { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding-bottom: 0; }
+.topbar nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.topbar .brand { font-weight: 700; font-size: 1.05rem; margin-inline-end: auto; }
+.topbar nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.topbar nav a {
+  color: #e6fffb; text-decoration: none; padding: 6px 12px;
+  border-radius: 8px; font-size: .93rem;
+}
+.topbar nav a:hover { background: rgba(255, 255, 255, .14); }
+.topbar nav a[aria-current="page"] { background: rgba(255, 255, 255, .22); color: #fff; }
+.topbar form { margin: 0; }
+
+/* --- البطاقات ---------------------------------------------------- */
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
+  margin-bottom: 20px;
+}
+.card > :last-child { margin-bottom: 0; }
+.card-title { margin-bottom: 12px; }
+.card-title h1, .card-title h2 { margin: 0; display: inline; }
+.card-title .hint { color: var(--muted); font-size: .85rem; margin-inline-start: 10px; }
+
+/* شبكة بـflex لا بـgrid: محرّك PDF يدعم flex بثبات أكبر، والنتيجة نفسها. */
+.grid { display: flex; flex-wrap: wrap; gap: 16px; }
+.grid > * { flex: 1 1 auto; min-width: 0; }
+.grid-2 > * { flex-basis: 260px; }
+.grid-3 > * { flex-basis: 200px; }
+.grid-4 > * { flex-basis: 132px; }
+
+/* --- بطاقات المؤشرات -------------------------------------------- */
+.metric {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px;
+}
+.metric .label { color: var(--muted); font-size: .85rem; display: block; }
+.metric .value { display: block; font-size: 1.5rem; font-weight: 700; color: var(--teal-deep); line-height: 1.3; }
+.metric .value .unit { font-size: .9rem; font-weight: 500; color: var(--muted); }
+.metric .sub { display: block; font-size: .8rem; color: var(--muted); margin-top: 2px; }
+
+/* --- الشارات ----------------------------------------------------- */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: .8rem; font-weight: 600; border: 1px solid transparent;
+  margin-inline-start: 6px;
+}
+/* نقطة قبل النص: الحالة لا تُنقل باللون وحده. */
+.badge::before { content: "● "; font-size: .7em; }
+.badge-good { background: var(--green-soft); color: var(--green); border-color: #bbf7d0; }
+.badge-info { background: var(--teal-soft); color: var(--teal-deep); border-color: #99f6e4; }
+.badge-warn { background: var(--orange-soft); color: var(--orange); border-color: #fed7aa; }
+.badge-bad  { background: #fee2e2; color: var(--red); border-color: #fecaca; }
+.badge-muted { background: #eef2f3; color: var(--muted); border-color: var(--line); }
+
+/* --- الجداول ----------------------------------------------------- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--line); }
+thead th {
+  color: var(--muted); font-weight: 600; font-size: .82rem;
+  border-bottom: 2px solid var(--line); white-space: nowrap;
+}
+tbody tr:hover { background: #fafcfc; }
+tfoot td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: none; }
+td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td .badge { font-size: .7rem; padding: 1px 7px; margin: 0; }
+/* رقم أو مدى يُقرأ يسارًا-يمينًا داخل نص عربي: بدون العزل يقلب الاتجاه
+   ترتيب طرفي المدى فيظهر "240–96" مكان "96–240". */
+.ltr { direction: ltr; unicode-bidi: isolate; display: inline-block; }
+
+/* --- النماذج ----------------------------------------------------- */
+label { display: block; font-size: .88rem; color: var(--muted); margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%; padding: 9px 11px; font: inherit; color: inherit;
+  background: #fff; border: 1px solid var(--line); border-radius: 8px;
+}
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--teal); outline-offset: 1px; border-color: var(--teal);
+}
+.field { margin-bottom: 14px; }
+.form-row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 16px; border-radius: 8px; border: 1px solid transparent;
+  background: var(--teal); color: #fff; font: inherit; font-weight: 600;
+  cursor: pointer; text-decoration: none;
+}
+.btn:hover { background: var(--teal-deep); }
+.btn-secondary { background: #fff; color: var(--teal-deep); border-color: var(--line); }
+.btn-secondary:hover { background: #f0fdfa; }
+.btn-small { padding: 5px 11px; font-size: .85rem; }
+.btn[disabled] { opacity: .55; cursor: not-allowed; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* --- التنبيهات --------------------------------------------------- */
+.alert {
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;
+  border: 1px solid var(--line); background: #fff; font-size: .92rem;
+}
+.alert-warn { background: var(--orange-soft); border-color: #fed7aa; color: #7c2d12; }
+.alert-bad { background: #fee2e2; border-color: #fecaca; color: #7f1d1d; }
+.alert-good { background: var(--green-soft); border-color: #bbf7d0; color: #14532d; }
+.alert-info { background: var(--teal-soft); border-color: #99f6e4; color: var(--teal-deep); }
+.alert strong { display: block; margin-bottom: 2px; }
+
+/* --- الرسوم -------------------------------------------------------
+   السلاسل الزمنية SVG (أرقام فقط داخلها)، والرسوم ذات التسميات العربية
+   مبنية بـHTML لأن محرّك PDF لا يعيد ترتيب النص العربي داخل SVG.        */
+.chart { width: 100%; height: auto; display: block; }
+.chart-legend { margin-top: 10px; font-size: .85rem; color: var(--muted); }
+.chart-legend span { display: inline-block; margin-inline-end: 14px; }
+.chart-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block;
+  margin-inline-end: 6px; vertical-align: baseline; }
+.chart-empty { color: var(--muted); text-align: center; padding: 28px 0; }
+
+/* أعمدة أفقية (توزيع المحابس) */
+.hbar-row, .compare-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.hbar-label { flex: 0 0 26%; font-size: .9rem; overflow-wrap: anywhere; }
+.compare-name { flex: 0 0 34%; font-size: .82rem; color: var(--muted); }
+.hbar-track { flex: 1 1 auto; background: #eef2f3; border-radius: 999px; height: 20px;
+  display: flex; justify-content: flex-start; overflow: hidden; }
+.hbar-fill { display: block; height: 100%; border-radius: 999px; min-width: 2px; }
+.hbar-value, .compare-value { flex: 0 0 auto; font-size: .85rem; color: var(--ink);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* مقارنة الشهر: رسوم صغيرة مستقلة، لكل مؤشر مقياسه */
+.compare-grid { display: flex; flex-wrap: wrap; gap: 18px; }
+.compare-item { flex: 1 1 220px; min-width: 0; }
+.compare-title { margin: 0 0 8px; font-size: .9rem; font-weight: 600; }
+
+/* --- تفاصيل صغيرة ------------------------------------------------- */
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+.mono { font-variant-numeric: tabular-nums; }
+.estimate { border-bottom: 1px dotted var(--muted); cursor: help; }
+.methodology { background: #f8fafa; border-radius: 10px; padding: 14px; font-size: .88rem; color: var(--muted); }
+.methodology ul { margin: 8px 0 0; padding-inline-start: 20px; }
+.disclaimer { border-inline-start: 4px solid var(--orange); background: var(--orange-soft);
+  padding: 12px 14px; border-radius: 8px; font-size: .88rem; color: #7c2d12; }
+.footer { color: var(--muted); font-size: .82rem; text-align: center; padding: 20px 0; }
+
+.login-page { max-width: 380px; margin: 12vh auto; }
+
+/* --- الطباعة و PDF ------------------------------------------------ */
+@page { size: A4; margin: 14mm 12mm; }
+@media print {
+  body { background: #fff; font-size: 12px; }
+  .topbar, .actions, .no-print { display: none !important; }
+  .card { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+  .metric { break-inside: avoid; }
+  table { font-size: 9.5px; }
+  th, td { padding: 4px 5px; }
+  a { color: inherit; text-decoration: none; }
+}

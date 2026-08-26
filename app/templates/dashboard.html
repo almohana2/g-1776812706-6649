@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}اللوحة{% endblock %}
+{% block content %}
+<h1>الحالة الآن</h1>
+
+{% if not controllers %}
+  <div class="alert alert-warn"><strong>لم يُكتشف أي كنترولر بعد</strong>
+    شغّل الـWorker أو اضغط "مزامنة" في صفحة الصحة بعد ضبط مفتاح Hydrawise.</div>
+{% endif %}
+
+{% for item in controllers %}
+<div class="card">
+  <div class="card-title">
+    <h2>{{ item.controller.name }}</h2>
+    <span class="badge badge-{{ 'good' if item.online else 'bad' }}">
+      {{ 'متصل' if item.online else 'غير متصل' }}</span>
+    {% if item.gap_open %}<span class="badge badge-warn">فجوة بيانات مفتوحة الآن</span>{% endif %}
+  </div>
+  <p class="small muted" style="margin-top:0">
+    آخر مزامنة ناجحة: {{ item.controller.last_successful_poll_at | datetime(true) }}
+    {% if item.seconds_since_poll is not none %}
+      (قبل {{ item.seconds_since_poll | duration }})
+    {% endif %}
+  </p>
+
+  {% if item.running %}
+    <div class="grid grid-3">
+    {% for run in item.running %}
+      <div class="metric">
+        <span class="label">يعمل الآن</span>
+        <span class="value">{{ run.zone_name }}</span>
+        <span class="sub">
+          منذ {{ run.elapsed_seconds | duration }}
+          {% if run.remaining_seconds %} · يتبقى {{ run.remaining_seconds | duration }}{% endif %}
+        </span>
+      </div>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted" style="margin-bottom:0">لا يوجد محبس يعمل الآن.</p>
+  {% endif %}
+
+  <div class="table-wrap" style="margin-top:16px">
+    <table>
+      <thead><tr><th>#</th><th>المحبس</th><th>الحالة</th><th>التشغيل القادم</th><th>آخر ريّة</th></tr></thead>
+      <tbody>
+      {% for zone in item.zones %}
+        <tr>
+          <td class="num">{{ zone.number if zone.number is not none else '—' }}</td>
+          <td>{{ zone.name }}</td>
+          <td>
+            {% if zone.is_running %}<span class="badge badge-info">يعمل</span>
+            {% elif zone.is_scheduled %}<span class="badge badge-muted">مجدول</span>
+            {% else %}<span class="badge badge-muted">غير مجدول</span>{% endif %}
+          </td>
+          <td class="small">{{ zone.next_run_text or '—' }}</td>
+          <td class="small muted">{{ zone.last_water_text or '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>ملخص اليوم — {{ item.today.day }}</h2></div>
+  <div class="grid grid-4">
+    <div class="metric"><span class="label">تشغيل المضخة</span>
+      <span class="value">{{ item.today.totals.pump_runtime_seconds | duration }}</span></div>
+    <div class="metric"><span class="label">المياه التقديرية</span>
+      <span class="value">{{ item.today.totals.water_liters_estimate | m3 }} <span class="unit">م³</span></span></div>
+    <div class="metric"><span class="label">عدد التشغيلات</span>
+      <span class="value">{{ item.today.totals.event_count }}</span></div>
+    <div class="metric"><span class="label">الطاقة التقديرية</span>
+      <span class="value">{{ item.today.totals.energy_kwh | number(2) }} <span class="unit">ك.و.س</span></span></div>
+  </div>
+  {% if item.today.has_gap %}
+    <div class="alert alert-warn" style="margin-top:14px">
+      <strong>يوجد انقطاع في بيانات اليوم</strong>
+      مدته {{ item.today.gap_seconds | duration }} — قد تكون بعض دورات الري غير مسجلة.
+    </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

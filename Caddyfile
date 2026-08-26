@@ -1,0 +1,17 @@
+# HTTPS تلقائي من Let's Encrypt عند ضبط SITE_ADDRESS على نطاق حقيقي.
+{$SITE_ADDRESS} {
+	encode gzip zstd
+
+	# الترويسات الأمنية تُضبط أيضًا في التطبيق؛ هنا للطلبات التي لا تصله.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	reverse_proxy web:8000 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

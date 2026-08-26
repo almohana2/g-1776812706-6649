@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}صحة النظام{% endblock %}
+{% block content %}
+<h1>صحة النظام</h1>
+{% if message %}<div class="alert alert-good">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-bad">{{ error }}</div>{% endif %}
+
+<div class="grid grid-3">
+  <div class="metric"><span class="label">قاعدة البيانات</span>
+    <span class="value">{{ 'سليمة' if health.database else 'متعذّرة' }}</span></div>
+  <div class="metric"><span class="label">مفتاح Hydrawise</span>
+    <span class="value">{{ 'مضبوط' if health.hydrawise_configured else 'غير مضبوط' }}</span>
+    <span class="sub">لا يُعرض المفتاح بعد حفظه</span></div>
+  <div class="metric"><span class="label">OpenWA</span>
+    <span class="value">{{ 'مفعّل' if health.openwa_configured else 'غير مفعّل' }}</span>
+    <span class="sub">{{ health.openwa_recipient or '—' }}</span></div>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>حالة الجامع</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>الكنترولر</th><th>آخر عينة ناجحة</th><th class="num">منذ</th><th>الحالة</th><th class="num">عينات 24 ساعة</th></tr></thead>
+    <tbody>
+    {% for item in collectors %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td class="small">{{ item.last_poll_at | datetime(true) }}</td>
+        <td class="num">{{ item.seconds_since | duration if item.seconds_since is not none else '—' }}</td>
+        <td><span class="badge badge-{{ item.tone }}">{{ item.state }}</span></td>
+        <td class="num">{{ item.samples_24h }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if user.is_admin %}
+  <form method="post" action="/system/test-connection" style="margin-top:14px;display:inline">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <button class="btn btn-secondary" type="submit">اختبار الاتصال بـHydrawise</button>
+  </form>
+  <form method="post" action="/system/sync" style="margin-top:14px;display:inline">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <button class="btn btn-secondary" type="submit">مزامنة الكنترولرات والمحابس</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>فجوات البيانات الأخيرة</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>البداية</th><th>النهاية</th><th class="num">المدة</th><th>السبب</th><th>قد تؤثر على التشغيل</th></tr></thead>
+    <tbody>
+    {% for gap in gaps %}
+      <tr>
+        <td class="small">{{ gap.started_at | datetime(true) }}</td>
+        <td class="small">{{ gap.ended_at | datetime(true) if gap.ended_at else 'مستمرة' }}</td>
+        <td class="num">{{ (gap.duration_seconds or 0) | duration }}</td>
+        <td>{{ gap_labels[gap.reason.value] }}</td>
+        <td>{{ 'نعم' if gap.may_affect_runtime else 'لا' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">لا توجد فجوات مسجلة.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>آخر عمليات التدقيق</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>الوقت</th><th>المنفّذ</th><th>العملية</th><th>السبب</th></tr></thead>
+    <tbody>
+    {% for entry in audit_entries %}
+      <tr><td class="small">{{ entry.occurred_at | datetime(true) }}</td>
+        <td>{{ entry.actor }}</td><td class="mono small">{{ entry.action }}</td>
+        <td class="small muted">{{ entry.reason or '—' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

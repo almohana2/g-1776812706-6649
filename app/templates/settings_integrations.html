@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}التكاملات{% endblock %}
+{% block content %}
+<h1>التكاملات</h1>
+
+<div class="card">
+  <div class="card-title"><h2>Hydrawise</h2>
+    <span class="badge badge-{{ 'good' if hydrawise.configured else 'warn' }}">
+      {{ 'مضبوط' if hydrawise.configured else 'غير مضبوط' }}</span></div>
+  <table>
+    <tbody>
+      <tr><td>عنوان الـAPI</td><td class="mono">{{ hydrawise.base }}</td></tr>
+      <tr><td>مصدر المفتاح</td><td class="mono">${{ hydrawise.key_env }} من بيئة الخادم</td></tr>
+      <tr><td>المفتاح</td><td>لا يُعرض بعد حفظه، ولا يُكتب في السجلات</td></tr>
+      <tr><td>كنترولر محدد</td><td>{{ hydrawise.controller_id or 'يُكتشف تلقائيًا' }}</td></tr>
+      <tr><td>مهلة الطلب</td><td>{{ hydrawise.timeout }} ثانية</td></tr>
+      <tr><td>الاحتفاظ بالعينات الخام</td><td>{{ hydrawise.retention_days }} يومًا</td></tr>
+      <tr><td>نقاط الاستخدام</td><td class="mono">customerdetails.php · statusschedule.php</td></tr>
+      <tr><td>التحكم بالمحابس</td><td><span class="badge badge-muted">معطّل بالتصميم — setzone.php غير منفّذة</span></td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">
+    اختبار الاتصال والمزامنة من <a href="/system/health">صفحة الصحة</a>.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>OpenWA</h2>
+    <span class="badge badge-{{ 'good' if openwa.configured else 'muted' }}">
+      {{ 'مفعّل' if openwa.configured else 'غير مفعّل' }}</span></div>
+  <table>
+    <tbody>
+      <tr><td>البوابة</td><td class="mono">{{ openwa.base or '—' }}</td></tr>
+      <tr><td>مسار الإرسال</td><td class="mono">{{ openwa.path }}</td></tr>
+      <tr><td>ترويسة المصادقة</td><td class="mono">{{ openwa.auth_header }}</td></tr>
+      <tr><td>المستلم</td><td class="mono">{{ openwa.recipient or '—' }}</td></tr>
+      <tr><td>المفتاح والجلسة</td><td>من بيئة الخادم — لا يُعرضان ولا يُسجّلان</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>التقارير والجدولة</h2></div>
+  <table>
+    <tbody>
+      <tr><td>المنطقة الزمنية</td><td class="mono">{{ report.timezone }}</td></tr>
+      <tr><td>التقرير اليومي</td><td class="mono">{{ report.daily_cron }}</td></tr>
+      <tr><td>التقرير الشهري</td><td class="mono">{{ report.monthly_cron }}</td></tr>
+      <tr><td>صلاحية الرابط العام</td><td>{{ report.link_ttl_days }} يومًا</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">كل التعبيرات الزمنية تُفسَّر بتوقيت الموقع، وتُخزَّن الأوقات بـUTC.</p>
+</div>
+{% endblock %}

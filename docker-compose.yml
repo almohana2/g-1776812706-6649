@@ -1,0 +1,95 @@
+# =====================================================================
+# تشغيل كامل: قاعدة بيانات + ويب + Worker واحد + وكيل HTTPS.
+#   docker compose up -d --build
+# الأسرار من ملف .env (غير موجود في Git) — انظر .env.example.
+# =====================================================================
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hydrawise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?اضبط POSTGRES_PASSWORD في .env}
+      POSTGRES_DB: ${POSTGRES_DB:-hydrawise}
+      TZ: ${TZ:-Asia/Muscat}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hydrawise} -d ${POSTGRES_DB:-hydrawise}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # لا يُنشر منفذ قاعدة البيانات خارج الشبكة الداخلية.
+    expose:
+      - "5432"
+
+  migrate:
+    build: .
+    restart: "no"
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - "*"
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # نسخة واحدة فقط: القفل الاستشاري يحمي من التكرار، لكن لا داعي لاختباره.
+    deploy:
+      replicas: 1
+    command: ["python", "-m", "worker.main"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f worker.main > /dev/null || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

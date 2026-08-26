@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}تقارير الري{% endblock %} — {{ app_name }}</title>
+  {% if inline_css %}<style>{{ inline_css | safe }}</style>{% else %}<link rel="stylesheet" href="/static/app.css">{% endif %}
+</head>
+<body>
+{% if user %}
+<header class="topbar no-print">
+  <div class="layout">
+    <span class="brand">{{ site_name or "تقارير الري" }}</span>
+    <nav>
+      <a href="/dashboard" {% if active=='dashboard' %}aria-current="page"{% endif %}>اللوحة</a>
+      <a href="/zones" {% if active=='zones' %}aria-current="page"{% endif %}>المحابس</a>
+      <a href="/events" {% if active=='events' %}aria-current="page"{% endif %}>سجل التشغيل</a>
+      <a href="/reports" {% if active=='reports' %}aria-current="page"{% endif %}>التقارير</a>
+      <a href="/system/health" {% if active=='health' %}aria-current="page"{% endif %}>الصحة</a>
+    </nav>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <button class="btn btn-secondary btn-small" type="submit">خروج ({{ user.username }})</button>
+    </form>
+  </div>
+</header>
+{% endif %}
+
+<main class="layout">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer no-print">
+  {{ app_name }} — التوقيت {{ timezone }} · التحكم بالمحابس غير مفعّل في هذا النظام
+</footer>
+</body>
+</html>

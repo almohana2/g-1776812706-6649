@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}التقارير{% endblock %}
+{% block content %}
+<h1>التقارير الشهرية</h1>
+{% if message %}<div class="alert alert-good">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-bad">{{ error }}</div>{% endif %}
+
+{% if user.is_admin %}
+<div class="card no-print">
+  <form method="post" action="/reports/generate">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <div class="form-row">
+      <div class="field"><label for="month">توليد تقرير شهر</label>
+        <input id="month" name="month" placeholder="2026-07" value="{{ default_month }}" required></div>
+    </div>
+    <button class="btn" type="submit">توليد</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>الشهر</th><th>الحالة</th><th class="num">المضخة</th><th class="num">المياه (م³)</th>
+      <th class="num">الطاقة (ك.و.س)</th><th class="num">التشغيلات</th><th class="num">التغطية</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for report in reports %}
+      <tr>
+        <td>{{ report.month_key | month_ar }}</td>
+        <td><span class="badge badge-{{ 'good' if report.status.value in ('final','sent') else 'muted' }}">{{ status_labels[report.status.value] }}</span></td>
+        <td class="num">{{ report.pump_union_runtime_seconds | duration }}</td>
+        <td class="num">{{ report.total_water_liters_estimate | m3 }}</td>
+        <td class="num">{{ report.energy_kwh_estimate | number(1) }}</td>
+        <td class="num">{{ report.event_count }}</td>
+        <td class="num">{{ report.data_coverage_percent | percent }}</td>
+        <td><a class="btn btn-secondary btn-small" href="/reports/{{ report.month_key }}">عرض</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted">لم يُولَّد أي تقرير بعد.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

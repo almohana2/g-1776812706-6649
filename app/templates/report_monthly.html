@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% set m = report.metrics %}
+{% block title %}تقرير {{ report.month | month_ar }}{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-title">
+    <h1>تقرير الري الشهري — {{ report.month | month_ar }}</h1>
+  </div>
+  <p class="muted small" style="margin:0">
+    {{ report.controller.name }} · التوقيت {{ report.timezone }} ·
+    صدر في {{ report.generated_at | datetime }}
+  </p>
+
+  <div style="margin-top:14px">
+    <span class="badge badge-{{ report.coverage.tone }}">جودة البيانات: {{ report.coverage.grade }}
+      ({{ report.coverage.percent | percent }})</span>
+    {% if report.metrics.low_confidence_runs %}
+      <span class="badge badge-warn">{{ report.metrics.low_confidence_runs }} حدث بثقة منخفضة</span>
+    {% endif %}
+    {% if not report.has_data %}<span class="badge badge-muted">لا توجد بيانات كافية</span>{% endif %}
+  </div>
+  {{ coverage_meter | safe }}
+  {% if report.coverage.gap_seconds %}
+    <p class="small muted" style="margin:4px 0 0">
+      إجمالي الانقطاع خلال الشهر: {{ report.coverage.gap_seconds | duration }}
+      {% if report.coverage.reasons %}({{ report.coverage.reasons | join('، ') }}){% endif %}
+    </p>
+  {% endif %}
+</div>
+
+{% if not report.has_data %}
+<div class="alert alert-warn" role="alert">
+  <strong>لا توجد بيانات كافية لهذا الشهر</strong>
+  لم يُسجَّل أي حدث تشغيل في الفترة. هذا لا يعني أن الاستهلاك صفر — قد يكون الجامع
+  لم يكن يعمل. راجع صفحة الصحة وسجل الفجوات.
+</div>
+{% elif report.coverage.percent < 85 %}
+<div class="alert alert-bad" role="alert">
+  <strong>التغطية أقل من 85%</strong>
+  الأرقام أدناه تمثل ما رُصد فعلًا فقط، وليست استهلاك الشهر الكامل المؤكد.
+</div>
+{% endif %}
+
+<div class="grid grid-4" style="margin-bottom:20px">
+  <div class="metric">
+    <span class="label">تشغيل المضخة</span>
+    <span class="value">{{ m.pump_runtime_seconds | duration }}</span>
+    <span class="sub">مجموع المحابس {{ m.zone_runtime_seconds | duration }}</span>
+  </div>
+  <div class="metric">
+    <span class="label">المياه التقديرية</span>
+    <span class="value">{{ m.water_estimate_liters | m3 }} <span class="unit">م³</span></span>
+    <span class="sub estimate" title="مدة التشغيل × معدل التدفق المضبوط لكل محبس">تقدير لا قياس</span>
+  </div>
+  <div class="metric">
+    <span class="label">النطاق المحتمل</span>
+    <span class="value ltr">{{ m.water_min_liters | m3 }}–{{ m.water_max_liters | m3 }}</span>
+    <span class="sub">م³ بين أدنى وأعلى تدفق</span>
+  </div>
+  <div class="metric">
+    <span class="label">الطاقة التقديرية</span>
+    <span class="value">{{ m.energy_estimate_kwh | number(1) }} <span class="unit">ك.و.س</span></span>
+    <span class="sub estimate" title="ساعات المضخة × القدرة الاسمية {{ report.methodology.pump_input_kw }} ك.و">قيمة اسمية</span>
+  </div>
+  <div class="metric">
+    <span class="label">عدد التشغيلات</span>
+    <span class="value">{{ m.event_count }}</span>
+    <span class="sub">في {{ report.highlights.active_days }} يومًا نشطًا</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>استهلاك المياه يوميًا</h2><span class="hint">م³ · الأول يمينًا</span></div>
+  {{ daily_water_chart | safe }}
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>ساعات التشغيل يوميًا</h2><span class="hint">ساعة</span></div>
+  {{ daily_hours_chart | safe }}
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>توزيع المياه بين المحابس</h2><span class="hint">م³ تقديرية</span></div>
+  {{ zone_chart | safe }}
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>تفصيل المحابس</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>المحبس</th><th class="num">التشغيلات</th><th class="num">إجمالي المدة</th>
+          <th class="num">متوسط اليوم</th><th class="num">أطول / أقصر (س:د)</th>
+          <th class="num">التدفق (ل/د)</th><th class="num">المياه (م³)</th>
+          <th class="num">النطاق (م³)</th><th class="num">المساهمة</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for zone in report.zones %}
+        <tr>
+          <td class="num">{{ zone.number if zone.number is not none else '—' }}</td>
+          <td>{{ zone.name }}
+            {% if zone.name in report.methodology.uncalibrated_zones %}
+              <span class="badge badge-muted" title="ما زال على التدفق الافتراضي">غير معاير</span>
+            {% endif %}
+          </td>
+          <td class="num">{{ zone.run_count }}</td>
+          <td class="num">{{ zone.runtime_seconds | duration_compact }}</td>
+          <td class="num">{{ zone.average_seconds_per_active_day | duration_compact }}</td>
+          <td class="num ltr">{{ zone.longest_run_seconds | hm }} / {{ zone.shortest_run_seconds | hm }}</td>
+          <td class="num">{{ zone.flow_lpm | number(0) }}</td>
+          <td class="num">{{ zone.water_liters_estimate | m3 }}</td>
+          <td class="num ltr">{{ zone.water_liters_min | m3 }}–{{ zone.water_liters_max | m3 }}</td>
+          <td class="num">{{ zone.share_percent | percent }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3">الإجمالي</td>
+          <td class="num">{{ m.zone_runtime_seconds | duration_compact }}</td>
+          <td colspan="3"></td>
+          <td class="num">{{ m.water_estimate_liters | m3 }}</td>
+          <td class="num ltr">{{ m.water_min_liters | m3 }}–{{ m.water_max_liters | m3 }}</td>
+          <td class="num">100.0%</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>المقارنة بالشهر السابق</h2></div>
+  {% if report.comparison %}
+    <p class="small muted" style="margin-top:0">
+      مقابل {{ report.comparison.month | month_ar }} —
+      المياه {{ report.comparison.water_change_percent | signed_percent }}،
+      تشغيل المضخة {{ report.comparison.pump_change_percent | signed_percent }}.
+    </p>
+    {{ comparison_chart | safe }}
+  {% else %}
+    <p class="muted" style="margin:0">لا يوجد شهر سابق فيه بيانات للمقارنة.</p>
+  {% endif %}
+</div>
+
+{% if report.alerts %}
+<div class="card">
+  <div class="card-title"><h2>الملاحظات والتنبيهات</h2><span class="hint">معلوماتية — لا تتحكم بالمضخة</span></div>
+  {% for alert in report.alerts %}
+    <div class="alert alert-{{ alert.severity }}">{{ alert.text }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title"><h2>المنهجية</h2></div>
+  <div class="methodology">
+    <ul>
+      <li>المياه = مدة التشغيل بالدقائق × معدل التدفق المضبوط للمحبس ÷ 1000.</li>
+      <li>النطاق محسوب بأدنى تدفق {{ report.methodology.flow_min_lpm | number(0) }} ل/د
+          وأعلى تدفق {{ report.methodology.flow_max_lpm | number(0) }} ل/د.</li>
+      <li>زمن المضخة = اتحاد فترات تشغيل المحابس، لا مجموعها، حتى لا يُحتسب التداخل مرتين.</li>
+      <li>الطاقة = ساعات المضخة × {{ report.methodology.pump_input_kw }} ك.و (قدرة اسمية من اللوحة).</li>
+      <li>التغطية = نسبة الفترة التي كان الجمع فيها يعمل، بعد طرح الفجوات.</li>
+      {% if report.methodology.uncalibrated_zones %}
+        <li>محابس ما زالت على التدفق الافتراضي:
+            {{ report.methodology.uncalibrated_zones | join('، ') }}.</li>
+      {% endif %}
+      <li>حدث يعبر حد الشهر يُوزَّع حسابيًا على الشهرين دون تغيير سجله.</li>
+    </ul>
+  </div>
+  <div class="disclaimer" style="margin-top:14px">{{ report.disclaimer }}</div>
+</div>
+
+{% if show_actions %}
+<div class="actions no-print">
+  <a class="btn" href="/api/v1/reports/monthly/{{ report.month }}/pdf">تنزيل PDF</a>
+  <a class="btn btn-secondary" href="/api/v1/reports/monthly/{{ report.month }}/csv">تنزيل CSV</a>
+  <a class="btn btn-secondary" href="/api/v1/reports/monthly/{{ report.month }}">JSON</a>
+  {% if user and user.is_admin %}
+    <form method="post" action="/reports/{{ report.month }}/regenerate" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <button class="btn btn-secondary" type="submit">إعادة التوليد</button>
+    </form>
+    <form method="post" action="/reports/{{ report.month }}/share" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <button class="btn btn-secondary" type="submit">رابط عام جديد</button>
+    </form>
+    <form method="post" action="/reports/{{ report.month }}/send" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+      <button class="btn btn-secondary" type="submit">إرسال عبر واتساب</button>
+    </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if share_url %}
+<div class="alert alert-good no-print">
+  <strong>رابط عام صالح حتى {{ share_expires | datetime }}</strong>
+  <code>{{ share_url }}</code>
+</div>
+{% endif %}
+
+{% if deliveries %}
+<div class="card no-print">
+  <div class="card-title"><h2>سجل الإرسال</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>القناة</th><th>المستلم</th><th>الحالة</th><th class="num">المحاولات</th><th>الوقت</th><th>الخطأ</th></tr></thead>
+    <tbody>
+    {% for delivery in deliveries %}
+      <tr>
+        <td>{{ delivery.channel.value }}</td>
+        <td class="mono">{{ delivery.recipient_masked }}</td>
+        <td><span class="badge badge-{{ 'good' if delivery.status.value == 'sent' else 'warn' if delivery.status.value == 'pending' else 'bad' }}">{{ delivery.status.value }}</span></td>
+        <td class="num">{{ delivery.attempt_count }}</td>
+        <td>{{ delivery.sent_at | datetime }}</td>
+        <td class="small muted">{{ delivery.last_error or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% endblock %}

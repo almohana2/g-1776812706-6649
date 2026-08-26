@@ -5,9 +5,17 @@ build/
 dist/
 .venv/
 venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# The local run log and the site config hold operational data, not source.
+# الأسرار وبيانات التشغيل — ممنوع دخولها Git
+.env
+*.env
+!.env.example
+secrets/
+backups/
+reports_output/
+*.pdf
+*.sqlite
 *.db
-*.db-journal
-hydrawise.config.json
-!hydrawise.config.example.json

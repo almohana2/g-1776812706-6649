@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}تسجيل الدخول{% endblock %}
+{% block content %}
+<div class="login-page">
+  <div class="card">
+    <h1>تسجيل الدخول</h1>
+    <p class="muted small">لوحة تقارير الري — للقراءة فقط.</p>
+    {% if error %}<div class="alert alert-bad" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <div class="field">
+        <label for="username">اسم المستخدم</label>
+        <input id="username" name="username" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">كلمة المرور</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn" type="submit">دخول</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

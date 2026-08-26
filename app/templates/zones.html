@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}المحابس{% endblock %}
+{% block content %}
+<h1>المحابس ومعايرة التدفق</h1>
+{% if message %}<div class="alert alert-good">{{ message }}</div>{% endif %}
+{% if error %}<div class="alert alert-bad">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <p class="small muted" style="margin-top:0">
+    معدل التدفق هو ما يحوّل دقائق التشغيل إلى لترات. المحبس غير المعاير يستعمل
+    القيمة الافتراضية، ويظهر تقديره أقل دقة. للمعايرة: شغّل المحبس مدة معلومة،
+    قِس الحجم، ثم اقسم اللترات على الدقائق — وكرّرها ثلاث مرات وخذ الوسيط.
+  </p>
+</div>
+
+{% for zone in zones %}
+<div class="card">
+  <div class="card-title">
+    <h2>{{ zone.label }}</h2>
+    <span class="hint">محبس رقم {{ zone.physical_number or '—' }} · relay_id {{ zone.hydrawise_relay_id }}</span>
+    {% if zone.is_calibrated %}
+      <span class="badge badge-good">معاير ({{ zone.calibration_method.value }})</span>
+    {% else %}<span class="badge badge-muted">غير معاير</span>{% endif %}
+    {% if not zone.is_active %}<span class="badge badge-warn">غير نشط</span>{% endif %}
+  </div>
+  {% if user.is_admin %}
+  <form method="post" action="/zones/{{ zone.id }}">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <div class="form-row">
+      <div class="field"><label for="n{{ zone.id }}">الاسم العربي</label>
+        <input id="n{{ zone.id }}" name="display_name_ar" value="{{ zone.display_name_ar or '' }}"></div>
+      <div class="field"><label for="f{{ zone.id }}">التدفق المرجح (ل/د)</label>
+        <input id="f{{ zone.id }}" name="flow_rate_lpm" type="number" step="0.01" min="0"
+               value="{{ zone.flow_rate_lpm }}" required></div>
+      <div class="field"><label for="mn{{ zone.id }}">أدنى تدفق</label>
+        <input id="mn{{ zone.id }}" name="flow_min_lpm" type="number" step="0.01" min="0"
+               value="{{ zone.flow_min_lpm }}" required></div>
+      <div class="field"><label for="mx{{ zone.id }}">أعلى تدفق</label>
+        <input id="mx{{ zone.id }}" name="flow_max_lpm" type="number" step="0.01" min="0"
+               value="{{ zone.flow_max_lpm }}" required></div>
+      <div class="field"><label for="c{{ zone.id }}">طريقة المعايرة</label>
+        <select id="c{{ zone.id }}" name="calibration_method">
+          {% for method in calibration_methods %}
+            <option value="{{ method.value }}" {% if zone.calibration_method == method %}selected{% endif %}>
+              {{ method_labels[method.value] }}</option>
+          {% endfor %}
+        </select></div>
+    </div>
+    <div class="field"><label for="r{{ zone.id }}">سبب التغيير (يُحفظ في سجل التدقيق)</label>
+      <input id="r{{ zone.id }}" name="reason" placeholder="مثال: قياس بدلو مدرّج ثلاث مرات"></div>
+    <button class="btn" type="submit">حفظ</button>
+    <span class="small muted">آخر معايرة: {{ zone.calibrated_at | datetime }}</span>
+  </form>
+  {% else %}
+    <p class="small">التدفق المرجح {{ zone.flow_rate_lpm | number(2) }} ل/د
+      (النطاق {{ zone.flow_min_lpm | number(0) }}–{{ zone.flow_max_lpm | number(0) }}).
+      التعديل متاح للإدارة فقط.</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

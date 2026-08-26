@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}سجل التشغيل{% endblock %}
+{% block content %}
+<h1>سجل التشغيل</h1>
+
+<div class="card no-print">
+  <form method="get" action="/events">
+    <div class="form-row">
+      <div class="field"><label for="from">من</label>
+        <input id="from" name="from" type="date" value="{{ filters.date_from or '' }}"></div>
+      <div class="field"><label for="to">إلى</label>
+        <input id="to" name="to" type="date" value="{{ filters.date_to or '' }}"></div>
+      <div class="field"><label for="zone">المحبس</label>
+        <select id="zone" name="zone">
+          <option value="">كل المحابس</option>
+          {% for zone in zones %}
+            <option value="{{ zone.id }}" {% if filters.zone_id == zone.id|string %}selected{% endif %}>
+              {{ zone.label }}</option>
+          {% endfor %}
+        </select></div>
+      <div class="field"><label for="confidence">الثقة</label>
+        <select id="confidence" name="confidence">
+          <option value="">الكل</option>
+          {% for level in confidences %}
+            <option value="{{ level.value }}" {% if filters.confidence == level.value %}selected{% endif %}>
+              {{ confidence_labels[level.value] }}</option>
+          {% endfor %}
+        </select></div>
+    </div>
+    <button class="btn" type="submit">تصفية</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>{{ total }} حدثًا</h2>
+    <span class="hint">تُعرض {{ events | length }} من الأحدث</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>المحبس</th><th>البداية</th><th>النهاية</th><th class="num">المدة</th>
+        <th class="num">المياه (م³)</th><th>الثقة</th><th>المصدر</th>
+      </tr></thead>
+      <tbody>
+      {% for event in events %}
+        <tr>
+          <td>{{ event.zone.label }}</td>
+          <td class="small">{{ event.started_at | datetime(true) }}</td>
+          <td class="small">{{ event.ended_at | datetime(true) if event.ended_at else 'يعمل الآن' }}</td>
+          <td class="num">{{ (event.runtime_seconds or 0) | duration }}</td>
+          <td class="num">{{ event.water_liters_estimate | m3 }}</td>
+          <td><span class="badge badge-{{ 'good' if event.confidence.value=='high' else 'info' if event.confidence.value=='medium' else 'warn' }}">
+            {{ confidence_labels[event.confidence.value] }}</span></td>
+          <td class="small muted">{{ event.source.value }}{% if event.is_adjusted %} · معدّل{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted">لا توجد أحداث مطابقة.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,258 +1,332 @@
-# hydrawise-report
+# نظام تقارير الري — HIR-SRS-001
 
-A dependency-free Python client for [Hydrawise](https://www.hydrawise.com/) (Hunter
-Industries) irrigation controllers, plus the piece Hydrawise itself does not
-provide: **a monthly water and electricity report per person**, emailed to each
-valve's owner.
+تطبيق ويب خاص يجمع حالة محابس الري من حساب **Hydrawise**، يحفظ أحداث التشغيل
+محليًا، ثم يصدر تقريرًا شهريًا عربيًا يوضح ساعات التشغيل واستهلاك المياه
+والطاقة التقديريين وجودة البيانات، ويرسل رابطه عبر **OpenWA**.
 
-* Talk to the controller — list zones, see what is watering, run/stop/suspend a valve.
-* Keep a local run log, because the public API has no watering history.
-* Turn logged run time into cubic metres, kWh and money, split by whoever owns each valve.
-* Mail each person their own report, in English or Arabic.
-
-No runtime dependencies: standard library only (`urllib`, `sqlite3`, `smtplib`).
-Tests are `unittest` and never touch the network.
+> **التطبيق للقراءة فقط.** لا يوجد فيه أي مسار يشغّل محبسًا أو يوقفه أو يعلّقه،
+> ونقطة `setzone.php` غير منفّذة إطلاقًا. اختبار في `tests/unit/test_readonly_guard.py`
+> يفحص المستودع كله ويفشل إن أُضيفت.
 
 ---
 
-## 1. Get an API key — not a password
+## المحتويات
 
-Everything here authenticates with a Hydrawise **API key**, which you get from
-the Hydrawise web app:
+1. [كيف يعمل](#كيف-يعمل)
+2. [التشغيل السريع](#التشغيل-السريع)
+3. [الإعداد](#الإعداد)
+4. [التشغيل اليومي](#التشغيل-اليومي)
+5. [كيف تُحسب الأرقام](#كيف-تحسب-الأرقام)
+6. [المعايرة](#المعايرة)
+7. [النسخ الاحتياطي والاستعادة](#النسخ-الاحتياطي-والاستعادة)
+8. [الاختبارات](#الاختبارات)
+9. [بنية المشروع](#بنية-المشروع)
+10. [ما نُفِّذ وما لم يُنفَّذ](#ما-نفذ-وما-لم-ينفذ)
+11. [الأمان](#الأمان)
 
-> app.hydrawise.com → **My Account** → **Account Details** → API key
+---
+
+## كيف يعمل
+
+واجهة Hydrawise العامة تعطي **ما يعمل الآن** والبرنامج القادم، ولا توفّر نقطة
+لاسترجاع سجل ري تاريخي. لذلك يبني النظام التاريخ بنفسه:
+
+```
+Hydrawise REST API ──> Worker (استطلاع دوري) ──> PostgreSQL ──> FastAPI ──> صفحة/PDF/CSV
+                                                       └────────> OpenWA (رابط التقرير)
+```
+
+الـWorker يستعلم عن الحالة وفق قيمة `nextpoll` التي يعيدها الخادم، ويحوّل انتقال
+كل محبس من متوقف إلى يعمل ثم إلى متوقف إلى **حدث تشغيل** مخزَّن. الحساب كله يجري
+لاحقًا على هذه الأحداث.
+
+ثلاث حالات صعبة يعالجها الجامع صراحةً:
+
+| الحالة | السلوك |
+|---|---|
+| بدأ الاستطلاع في منتصف تشغيل | تُحسب البداية من `المدة المخططة − المتبقي`، مقيدة بضعف فترة الاستطلاع السابقة، وتُخفَّض الثقة عند التقييد |
+| توقّف الـWorker أثناء تشغيل | يُغلق الحدث عند آخر رصد (زائد المتبقي المعلوم فقط)، وتُفتح فجوة بيانات موثّقة |
+| انقطاع شبكة | عينة فاشلة + فجوة مفتوحة + تراجع تصاعدي `30s → 60s → 120s → 300s`، ثم العودة إلى `nextpoll` |
+
+كل حدث يحمل **مستوى ثقة** (`high` / `medium` / `low`)، وكل تقرير يحمل **نسبة تغطية**
+تقول أي جزء من الشهر كان الجمع فيه يعمل فعلًا.
+
+---
+
+## التشغيل السريع
+
+### باستخدام Docker (الطريقة الموصى بها)
 
 ```bash
-export HYDRAWISE_API_KEY='your-key-here'
+cp .env.example .env
+# املأ الأسرار في .env: APP_SECRET_KEY, POSTGRES_PASSWORD, HYDRAWISE_API_KEY,
+# OPENWA_*, BOOTSTRAP_ADMIN_PASSWORD, SITE_ADDRESS
+
+docker compose up -d --build          # يشغّل db + migrate + web + worker + proxy
+docker compose run --rm web python -m scripts.bootstrap   # ينشئ حساب الإدارة
+docker compose logs -f worker         # راقب أول ساعتين من الجمع
 ```
 
-The key is a bearer credential in query-string clothing: anyone holding it can
-water your garden. Keep it in the environment (or a secrets manager), never in
-git. This tool never asks for, stores, or transmits your Hydrawise account
-password — if you have shared that password anywhere, change it and use an API
-key instead.
+ثم افتح النطاق الذي ضبطته في `SITE_ADDRESS` وسجّل الدخول.
 
-## 2. Install
+### محليًا للتطوير
 
 ```bash
-git clone <this repo> && cd hydrawise-report
-pip install -e .          # gives you the `hydrawise` command
-# or run it straight from the checkout:
-python -m hydrawise --help
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+export DATABASE_URL='postgresql+psycopg://hydrawise:hydrawise@127.0.0.1:5432/hydrawise'
+export HYDRAWISE_API_KEY='...'
+export APP_SECRET_KEY="$(python -c 'import secrets;print(secrets.token_urlsafe(48))')"
+
+python -m alembic upgrade head
+python -m scripts.bootstrap --username admin --password 'كلمة-مرور-قوية-جدًا'
+
+uvicorn app.main:app --reload            # الويب
+python -m worker.main                    # الجامع، في طرفية أخرى
 ```
 
-Python 3.9 or newer.
-
-## 3. Look around
+يتطلب التصيير إلى PDF مكتبات Pango/Cairo وخطًا عربيًا:
 
 ```bash
-hydrawise controllers            # controllers on the account
-hydrawise status                 # zones, next runs, what is watering now
-hydrawise zones --json           # raw payload, for scripting
-hydrawise run "Front lawn" --minutes 10
-hydrawise stop --all
-hydrawise suspend 2 --days 3     # by zone number
-hydrawise resume 2
+sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libcairo2 \
+                        libgdk-pixbuf-2.0-0 fonts-noto-core
 ```
 
-Zones can be named by **number** (the position on the controller), by **relay
-id**, or by **name** (`"palms"` matches *Date palms*).
+---
 
-## 4. Configure the site
+## الإعداد
+
+### مفتاح Hydrawise
+
+من `app.hydrawise.com` ← **Account Details** ← **Account Settings** ← **Generate API Key**.
+
+المفتاح يوضع في بيئة الخادم باسم `HYDRAWISE_API_KEY`، ولا يُكتب في المستودع ولا
+يظهر في الواجهة ولا في السجلات: العميل يسجّل اسم النقطة وحالة HTTP والمدة فقط،
+ومنقّح السجلات يستبدل أي `api_key=` بـ`***`.
+
+### المتغيرات
+
+كل المتغيرات مشروحة في [`.env.example`](.env.example). أهمها:
+
+| المتغير | الأثر |
+|---|---|
+| `REPORT_TIMEZONE` | حدود اليوم والشهر وتفسير تعبيرات cron (افتراضيًا `Asia/Muscat`) |
+| `DEFAULT_FLOW_LPM` / `_MIN_` / `_MAX_` | تدفق المحبس الجديد قبل معايرته |
+| `PUMP_ESTIMATED_INPUT_KW` | القدرة المستخدمة في تقدير الطاقة |
+| `HYDRAWISE_RAW_SAMPLE_RETENTION_DAYS` | مدة الاحتفاظ بالعينات الخام (الأحداث والتقارير لا تُحذف) |
+| `MONTHLY_REPORT_CRON` | موعد التقرير الشهري (افتراضيًا `15 0 1 * *`) |
+| `REPORT_PUBLIC_LINK_TTL_DAYS` | صلاحية رابط المشاركة |
+| `OPENWA_AUTH_HEADER` / `_SEND_PATH` / `_RECIPIENT_FIELD` | تُضبط حسب إصدار بوابة OpenWA لديك |
+
+صيغة طلب OpenWA قابلة للضبط بالكامل لأن البوابات تختلف بين الإصدارات؛ لا تفترض
+اسم ترويسة ثابتًا دون مراجعة توثيق نسختك.
+
+---
+
+## التشغيل اليومي
+
+| المهمة | الجدول | المسؤول |
+|---|---|---|
+| استطلاع Hydrawise | ديناميكي وفق `nextpoll` | Worker |
+| مزامنة الأسماء | يوميًا 03:00 | Worker |
+| مراجعة الأحداث العالقة | كل 10 دقائق | Worker |
+| التقرير اليومي | 00:10 عن اليوم السابق | Worker |
+| التقرير الشهري + الإرسال | 00:15 يوم 1 عن الشهر السابق | Worker |
+| تنظيف العينات الخام | يوميًا 04:00 | Worker |
+| النسخ الاحتياطي | يوميًا 02:00 | cron على المضيف |
+
+الصفحات:
+
+| المسار | الغرض |
+|---|---|
+| `/dashboard` | الحالة الآن وملخص اليوم |
+| `/zones` | المحابس ومعايرة التدفق |
+| `/events` | سجل التشغيل مع فلاتر |
+| `/reports` · `/reports/2026-07` | التقارير الشهرية |
+| `/settings/integrations` · `/settings/pump` | الإعدادات وبيانات المضخة |
+| `/system/health` | صحة الجامع والفجوات وسجل التدقيق |
+| `/r/{token}` | رابط عام مؤقت للتقرير |
+
+وواجهة JSON تحت `/api/v1/` كما في وثيقة المتطلبات §13، إضافة إلى
+`/api/v1/health` المتاحة بلا تسجيل دخول للمراقبة.
+
+---
+
+## كيف تُحسب الأرقام
+
+```
+runtime_minutes = runtime_seconds / 60
+water_liters    = runtime_minutes × flow_rate_lpm      ← معدل مجمَّد وقت إغلاق الحدث
+water_m3        = water_liters / 1000
+pump_runtime    = duration(union(كل فترات المحابس))    ← اتحاد لا مجموع
+energy_kwh      = pump_runtime_hours × estimated_input_kw
+coverage        = (الفترة − الفجوات) / الفترة
+```
+
+**لماذا اتحاد الفترات؟** إذا عمل محبسان من 10:00 إلى 10:30، فمجموع المحابس ساعة
+واحدة لكن المضخة عملت نصف ساعة فقط. جمعهما يضاعف فاتورة الكهرباء بلا سبب.
+
+**حدود الشهر:** حدث من 23:50 آخر الشهر إلى 00:10 من الشهر التالي يُوزَّع عشر
+دقائق على كل شهر حسابيًا، دون تغيير سجل الحدث الأصلي.
+
+**التجميد:** عند توليد التقرير تُحفظ نسخة كاملة في `summary_json`، وتُقرأ منها
+الصفحة و PDF و CSV و JSON جميعًا. لذلك تتطابق الإجماليات بين الصيغ الأربع، ولا
+تتغير أرقام تقرير صادر إذا عايرت محبسًا بعده.
+
+> استهلاك المياه والطاقة **تقديران** محسوبان من مدة التشغيل، وليسا قراءة عداد.
+> هذا النص يظهر في كل تقرير، ويبقى حتى تُركّب عداد تدفق أو تُعاير كل محبس.
+
+---
+
+## المعايرة
+
+الرقم الوحيد الذي يفصل بين تقدير جيد وتقدير رديء هو `flow_rate_lpm`.
+
+1. شغّل محبسًا واحدًا مدة معلومة (10 دقائق مثلًا).
+2. قِس الحجم بوسيلة موثوقة، أو اقرأ عدادًا قبل وبعد.
+3. `flow_rate_lpm = اللترات المقيسة ÷ دقائق التشغيل`.
+4. كرّر ثلاث مرات وخذ **الوسيط**.
+5. أدخل النتيجة في `/zones` مع تحديد طريقة المعايرة وكتابة السبب — يُحفظ في سجل
+   التدقيق مع القيمة قبل وبعد.
+
+المحبس غير المعاير يظهر موسومًا في التقرير، وتُذكر أسماء غير المعايرة في قسم
+المنهجية، حتى لا يُقرأ الرقم على أنه أدق مما هو.
+
+---
+
+## النسخ الاحتياطي والاستعادة
 
 ```bash
-hydrawise init-config            # writes hydrawise.config.json
+./scripts/backup.sh                                   # نسخة الآن + فحص سلامة
+RESTORE=backups/daily/hydrawise-20260801-020000.sql.gz ./scripts/backup.sh --restore
 ```
 
-Then fill it in — this is where the numbers the controller cannot know live:
-
-```jsonc
-{
-  "timezone": "Asia/Riyadh",
-  "currency": "SAR",
-  "water":       { "tariff_per_m3": 3.0 },
-  "electricity": { "tariff_per_kwh": 0.18, "default_pump_kw": 2.2 },
-
-  "people": [
-    { "id": "ahmed", "name": "Ahmed", "email": "ahmed@example.com", "language": "ar" }
-  ],
-  "zones": [
-    { "zone": 1, "name": "Front lawn", "flow_rate_lpm": 40.0, "pump_kw": 2.2, "owner": "ahmed" }
-  ],
-
-  "email": {
-    "smtp_host": "smtp.gmail.com", "smtp_port": 587,
-    "username": "you@example.com", "from_address": "you@example.com",
-    "password_env": "HYDRAWISE_SMTP_PASSWORD"
-  }
-}
-```
-
-`flow_rate_lpm` is the valve's flow in **litres per minute**. Take it from the
-nozzle/emitter chart, or measure it once: run the zone for 60 seconds into a
-graduated bucket. Without it the report still shows the zone's run hours, but
-its water column reads `—` instead of a fabricated number.
-
-Secrets are referenced by environment-variable **name** (`api_key_env`,
-`password_env`) and read at run time, so the config file itself stays safe to
-keep next to the code. `.gitignore` excludes `hydrawise.config.json` and `*.db`
-anyway.
-
-## 5. Record the watering
-
-The Hydrawise REST API v1 answers *what is watering now*; it has no history
-endpoint. So run the poller and let it build the log:
-
-```bash
-hydrawise poll --interval 60        # foreground, Ctrl-C to stop
-hydrawise poll --once               # a single sample, e.g. from cron
-hydrawise runs --month 2026-08      # what the log holds
-```
-
-Each poll compares the controller's `running` list against the open runs in
-`hydrawise.db` and opens, extends or closes them. A poller that starts
-mid-run back-dates the start from the zone's remaining time, and one that dies
-mid-run has that run closed at its programmed length rather than left open.
-
-As a systemd service:
-
-```ini
-# /etc/systemd/system/hydrawise-poll.service
-[Unit]
-Description=Hydrawise run logger
-After=network-online.target
-
-[Service]
-Environment=HYDRAWISE_API_KEY=your-key-here
-WorkingDirectory=/opt/hydrawise
-ExecStart=/opt/hydrawise/.venv/bin/hydrawise poll --interval 60 --quiet
-Restart=always
-RestartSec=30
-
-[Install]
-WantedBy=multi-user.target
-```
-
-The client throttles itself — it spaces requests out and honours the server's
-own `nextpoll` hint — and backs off rather than dying when the API answers
-HTTP 429. A 60-second interval is plenty: the shortest run a zone can be given
-is one minute.
-
-## 6. Report and bill
-
-```bash
-hydrawise report                                   # last month, per person
-hydrawise report --month 2026-08 --format csv --output august.csv
-hydrawise report --month 2026-08 --format json     # for a dashboard
-hydrawise report --month 2026-08 --format html --person ahmed   # one mail body
-
-hydrawise send-reports --month 2026-08 --dry-run   # compose, do not send
-export HYDRAWISE_SMTP_PASSWORD='app-password'
-hydrawise send-reports --month 2026-08 --skip-empty
-```
-
-A monthly send on the 1st, via cron:
+يُحتفظ بآخر 30 نسخة يومية و12 شهرية. أضِف إلى cron على المضيف:
 
 ```cron
-0 6 1 * * cd /opt/hydrawise && HYDRAWISE_API_KEY=... HYDRAWISE_SMTP_PASSWORD=... \
-          .venv/bin/hydrawise send-reports --skip-empty >> /var/log/hydrawise-mail.log 2>&1
+0 2 * * * cd /opt/hydrawise && ./scripts/backup.sh >> /var/log/hydrawise-backup.log 2>&1
 ```
 
-With no `--month`, both commands use **last month**, evaluated in the config's
-timezone.
+**قبل اعتماد الإنتاج، نفّذ استعادة تجريبية فعلية** على قاعدة منفصلة وتأكد من أن
+التقارير والأحداث تظهر كما كانت. نسخة لم تُختبر استعادتها ليست نسخة.
 
-### How the numbers are worked out
+---
 
-```
-water   m³  = flow_rate_lpm × run_minutes ÷ 1000
-energy kWh  = pump_kw       × run_hours
-cost        = m³ × tariff_per_m3  +  kWh × tariff_per_kwh
-```
-
-Both conversions are **estimates from run time**, and the report says so in
-every mail. What that means in practice:
-
-* Accuracy is the accuracy of your `flow_rate_lpm`. A bucket test per zone
-  costs ten minutes and makes the whole report defensible.
-* If a zone has no flow rate, its water is not counted (and the report warns).
-* Electricity is attributed to whoever's valve was open — the pump runs for
-  their zone, so its kWh is theirs. Zones on mains pressure with no pump should
-  set `"pump_kw": 0`.
-* A run is billed to the month it **started** in; runs are not split across the
-  month boundary.
-* If your controller has a **flow meter**, its measured totals live in the
-  Hydrawise app's own reports and will be more accurate than this estimate —
-  worth cross-checking once against a month of this report.
-
-## 7. Use it as a library
-
-```python
-from hydrawise import HydrawiseClient, RunStore, build_report, month_bounds
-from hydrawise.config import Config
-
-client = HydrawiseClient(api_key)
-status = client.status_schedule()
-for zone in status.zones:
-    print(zone.number, zone.name, zone.nice_time, zone.is_scheduled)
-
-client.run_zone(status.zone("Front lawn").relay_id, seconds=600)
-
-config = Config.load("hydrawise.config.json")
-start, end = month_bounds("2026-08", config.timezone)
-with RunStore("hydrawise.db") as store:
-    report = build_report(store.runs_between(start, end), config,
-                          period="2026-08", start=start, end=end)
-print(report.person("ahmed").cubic_meters)
-```
-
-Every model keeps the payload it was parsed from in `.raw`, so a field this
-package does not model yet is still reachable.
-
-## 8. API coverage
-
-The Hydrawise REST API v1 is three GET endpoints, all authenticated with
-`api_key`:
-
-| Endpoint | Wrapped by | Notes |
-|---|---|---|
-| `customerdetails.php` | `customer_details()` | account + controllers |
-| `statusschedule.php` | `status_schedule()` | zones, sensors, live runs, `nextpoll` |
-| `setzone.php` | `run_zone`, `run_all_zones`, `stop_zone`, `stop_all_zones`, `suspend_zone`, `suspend_all_zones`, `resume_zone`, `resume_all_zones` | `period_id=999` + `custom=<seconds\|epoch>` |
-
-Errors arrive as HTTP 200 with an `error_msg` field as often as they do as an HTTP
-status, so both are classified into `HydrawiseAuthError`,
-`HydrawiseRateLimitError` and `HydrawiseAPIError`. API keys are redacted from
-error messages.
-
-## 9. Tests
+## الاختبارات
 
 ```bash
-python -m unittest discover -s tests -t .
+python -m pytest -q                    # 278 اختبارًا
+python -m pytest tests/unit -q         # منطق خالص، سريع
+python -m pytest --cov=app             # التغطية
+ruff check . && mypy app worker        # الجودة والأنواع
 ```
 
-118 tests, no dependencies and no internet access: HTTP is a scripted fake
-transport and time is a fake clock, so rate limiting, caching and back-off are
-asserted deterministically. Four of them run the real `urllib` transport
-against a throwaway server on loopback.
+الاختبارات تعمل على PostgreSQL حقيقي وتُنشئ قاعدة `hydrawise_test` وتطبّق عليها
+**نفس الترحيلات** التي يستعملها الإنتاج، من قاعدة فارغة في كل جلسة. Hydrawise
+يُحاكى بـ`httpx.MockTransport`، فلا يلمس أي اختبار الحساب الحقيقي.
 
-## 10. Layout
+تغطية اختبارات القبول:
+
+| المعيار | أين |
+|---|---|
+| AC-001 الاكتشاف | `tests/integration/test_collector.py::TestDiscovery` |
+| AC-002 حدث واحد لتسلسل طبيعي | `TestRunLifecycle::test_one_event_with_a_sane_duration` |
+| AC-003 إعادة التشغيل | `TestRestart` + فهرس فريد جزئي في قاعدة البيانات |
+| AC-004 التزام `nextpoll` | `tests/unit/test_hydrawise_client.py::TestNextPoll` |
+| AC-005 حساب المياه | `tests/unit/test_calculator.py::TestWater` |
+| AC-006 الفترات المتزامنة | `TestPumpUnion` + `test_overlapping_runs_count_once_for_the_pump` |
+| AC-007 حدود الشهر | `TestClipping` + `test_ac_007_a_run_across_the_month_boundary_is_split` |
+| AC-008 تطابق الصيغ | `tests/unit/test_exports.py::TestCsv` + `test_json_pdf_and_csv_agree_on_the_totals` |
+| AC-009 العربية في PDF | `TestPdf::test_ac_009_arabic_font_is_embedded` |
+| AC-010 عدم تكرار الإرسال | `tests/unit/test_openwa.py::TestSend` |
+| AC-011 عدم تسرّب الأسرار | `tests/e2e/test_web.py::TestSecretsAndHeaders` |
+| AC-012 نقص البيانات | `TestMonthlyPayload::test_ac_012_a_gap_lowers_coverage_and_is_reported` |
+| §19 منع التحكم | `tests/unit/test_readonly_guard.py` + `TestNoControlSurface` |
+
+---
+
+## بنية المشروع
 
 ```
-hydrawise/
-  client.py    REST API v1 client: throttling, retries, error classification
-  models.py    typed views over the API's loose JSON
-  storage.py   SQLite run log built from repeated polls
-  poller.py    the polling loop
-  config.py    site config: valves, flow rates, people, tariffs, SMTP
-  usage.py     run time → m³, kWh, cost, per person
-  report.py    text / CSV / JSON / HTML rendering (en + ar)
-  mailer.py    SMTP delivery
-  cli.py       the `hydrawise` command
-tests/         118 unittest tests
+app/
+  api/           المسارات: الدخول، اللوحة، المحابس، الأحداث، التقارير، الإعدادات، الصحة، الرابط العام
+  core/          الإعدادات، السجلات المنقّحة، الأمان، الوقت، القوالب
+  db/            المحرّك والجلسات والقفل الاستشاري
+  models/        جداول SQLAlchemy — SRS §8
+  schemas/       تحقق Pydantic لاستجابات Hydrawise وواجهة التطبيق
+  services/
+    hydrawise_client.py  عميل القراءة فقط
+    event_engine.py      آلة الحالات (منطق خالص، بلا قاعدة بيانات)
+    collector.py         الاستطلاع والأحداث والفجوات
+    calculator.py        معادلات المياه والطاقة والتغطية
+    report_generator.py  التقارير اليومية والشهرية والتنبيهات
+    charts.py            رسوم SVG/HTML تُبنى على الخادم
+    exports.py           HTML / PDF / CSV من مصدر واحد
+    openwa_client.py     الإرسال مع الحماية من التكرار
+    sharing.py           روابط عامة مؤقتة
+    status.py            الحالة الحيّة للوحة
+  templates/     قوالب عربية RTL
+worker/          الجامع والجدولة
+migrations/      ترحيلات Alembic
+tests/           unit / integration / e2e
+scripts/         bootstrap.py · backup.sh
 ```
 
-Arabic documentation: [`docs/README.ar.md`](docs/README.ar.md).
+---
 
-## License
+## ما نُفِّذ وما لم يُنفَّذ
+
+### مطبَّق كما في الوثيقة
+
+كل ما ورد في §8 (نموذج البيانات)، §9 (الجمع وآلة الحالات)، §10 (المعادلات)،
+§11 (المتطلبات الوظيفية عدا FR-014)، §12 و§13 (الواجهات)، §15 (OpenWA)،
+§17 (الجدولة)، §19 (منع التحكم)، §20 (معالجة الأخطاء)، §23 (اختبارات القبول).
+
+### اختلافات مقصودة عن §6.1
+
+| الوثيقة | المنفَّذ | السبب |
+|---|---|---|
+| Chart.js | رسوم SVG/HTML تُبنى على الخادم | PDF يُصيَّر بلا متصفح ولا JavaScript؛ الرسم المبني على الخادم يظهر متطابقًا في الصفحة وفي PDF (AC-008)، ويعمل مع سياسة CSP التي تمنع النصوص الخارجية |
+| Tailwind CSS | ورقة أنماط RTL مكتوبة يدويًا | لا CDN ولا خطوة بناء؛ الصفحة مكتفية ذاتيًا وتُصيَّر في PDF كما هي |
+| HTMX | نماذج HTML عادية | لا توجد في الإصدار الأول شاشة تحتاج تحديثًا جزئيًا |
+| Python 3.12+ | يعمل على 3.11+ وصورة Docker على 3.12 | توسيع التوافق دون فقد أي ميزة |
+| خط "ثمانية" | Noto Sans Arabic | رخصة الخط الأول غير متوفرة؛ الأسماء مذكورة في CSS فيكفي تثبيته لاستخدامه |
+| قاعدة التشغيل `relay.time == 1` | نفسها، مع اعتبار وجود المحبس في `running[]` تشغيلًا أيضًا | توسيع محافظ يغطي تأخّر تحديث `time`، ولا يخالف القاعدة |
+
+### غير منفَّذ عمدًا
+
+* **FR-014 استيراد CSV/XLSX** — الوثيقة نفسها (§27.2) تمنع تثبيت أي Mapping قبل
+  توفير ملف Export حقيقي. لم يُبنَ Adapter وهمي: بناؤه على تخمين أسوأ من عدمه.
+* **تقرير يومي مخزَّن** — §8 لا يعرّف جدولًا له، فيُحسب عند الطلب من الأحداث.
+* **OIDC** — مذكور في §6.1 كخيار اختياري؛ المنفَّذ جلسات موقّعة + Argon2id
+  بصلاحيتَي `admin` و`viewer`.
+* **نقطة `/metrics`** — المتاح: سجلات JSON منظمة، `/api/v1/health`،
+  و`/api/v1/system/collector-status` بكل ما تحتاجه المراقبة.
+
+### قيود يجب معرفتها
+
+* نموذج البيانات يدعم عدة كنترولرات، والجامع يستطلعها كلها؛ لكن صفحات التقارير
+  تعرض الكنترولر النشط الأول. تعدد الكنترولرات في الواجهة عمل لاحق.
+* التقرير لا يستطيع إنشاء تاريخ لم يراقبه. الشهر الأول بعد التركيب سيكون ناقصًا
+  بالضرورة، وستقول نسبة التغطية ذلك صراحةً.
+
+---
+
+## الأمان
+
+انظر [`SECURITY.md`](SECURITY.md). باختصار:
+
+* HTTPS فقط عبر الوكيل، وترويسات أمنية من التطبيق ومن الوكيل معًا.
+* كلمات المرور Argon2id؛ الجلسات كعكات موقّعة `Secure/HttpOnly/SameSite=Lax`.
+* CSRF على كل عملية متغيّرة، وتحديد معدل على تسجيل الدخول.
+* الروابط العامة رموز 256-bit تُخزَّن بصمتها فقط، بصلاحية محددة وقابلة للإبطال.
+* لا سر في المستودع ولا في السجلات ولا في الواجهة؛ الأرقام والأرقام التسلسلية
+  تُخفى جزئيًا.
+* **التطبيق لا يشغّل المضخة.** ولا يُعدّ حماية من الجفاف: ملصق
+  «No Running Without Water» يتطلب حماية كهربائية أو حساس مستوى مستقلًا عن هذا
+  النظام، وضبط الحماية الحرارية عمل كهربائي مختص.
+
+## الرخصة
 
 MIT.

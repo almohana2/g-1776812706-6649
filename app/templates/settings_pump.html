@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}بيانات المضخة{% endblock %}
+{% block content %}
+<h1>المضخة وتقدير الطاقة</h1>
+{% if message %}<div class="alert alert-good">{{ message }}</div>{% endif %}
+
+{% if not pump %}
+  <div class="alert alert-warn">لا يوجد كنترولر بعد — شغّل المزامنة أولًا.</div>
+{% else %}
+<div class="card">
+  <div class="card-title"><h2>لوحة البيانات</h2>
+    <span class="hint">{{ controller.name }}</span></div>
+  <div class="table-wrap"><table>
+    <tbody>
+      <tr><td>العلامة / الموديل</td><td>{{ pump.brand or '—' }} {{ pump.model or '' }}</td></tr>
+      <tr><td>القدرة الاسمية</td><td>{{ pump.rated_kw or '—' }} ك.و / {{ pump.rated_hp or '—' }} حصان</td></tr>
+      <tr><td>الجهد</td><td class="ltr">{{ pump.voltage_min or '—' }}–{{ pump.voltage_max or '—' }} V</td></tr>
+      <tr><td>التيار المقنن</td><td>{{ pump.rated_current_a or '—' }} A</td></tr>
+      <tr><td>التردد / السرعة</td><td>{{ pump.frequency_hz or '—' }} Hz · {{ pump.rpm or '—' }} RPM</td></tr>
+      <tr><td>ارتفاع الضخ</td><td class="ltr">{{ pump.head_min_m or '—' }}–{{ pump.head_max_m or '—' }} m</td></tr>
+      <tr><td>مجال التدفق</td><td class="ltr">{{ pump.flow_min_lpm or '—' }}–{{ pump.flow_max_lpm or '—' }} L/min</td></tr>
+      <tr><td>عمق البئر</td><td>{{ pump.well_depth_m or '—' }} م</td></tr>
+    </tbody>
+  </table></div>
+  <div class="alert alert-warn" style="margin-top:14px">
+    <strong>ملاحظات هندسية</strong>
+    عمق البئر لا يساوي الضاغط الديناميكي الكلي، ولا يجوز استنتاج تدفق دقيق من مجال
+    اللوحة دون منحنى المضخة أو قياس فعلي. القدرة الاسمية ليست قراءة عداد كهرباء.
+    ضبط الحماية الكهربائية مسؤولية كهربائي مختص، ولا يتدخل فيه هذا التطبيق.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title"><h2>القدرة المستخدمة في التقدير</h2></div>
+  {% if user.is_admin %}
+  <form method="post" action="/settings/pump">
+    <input type="hidden" name="csrf_token" value="{{ user.csrf_token }}">
+    <div class="form-row">
+      <div class="field"><label for="kw">القدرة التقديرية المسحوبة (ك.و)</label>
+        <input id="kw" name="estimated_input_kw" type="number" step="0.001" min="0.001" max="100"
+               value="{{ pump.estimated_input_kw }}" required></div>
+      <div class="field"><label for="brand">العلامة</label>
+        <input id="brand" name="brand" value="{{ pump.brand or '' }}"></div>
+      <div class="field"><label for="model">الموديل</label>
+        <input id="model" name="model" value="{{ pump.model or '' }}"></div>
+    </div>
+    <div class="field"><label for="notes">ملاحظات</label>
+      <textarea id="notes" name="notes" rows="2">{{ pump.notes or '' }}</textarea></div>
+    <div class="field"><label for="reason">سبب التغيير</label>
+      <input id="reason" name="reason" placeholder="مثال: قراءة عداد طاقة فعلي"></div>
+    <button class="btn" type="submit">حفظ</button>
+  </form>
+  {% else %}
+    <p>القدرة المستخدمة حاليًا: {{ pump.estimated_input_kw }} ك.و. التعديل للإدارة فقط.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
